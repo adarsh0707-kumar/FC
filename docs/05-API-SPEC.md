@@ -26,6 +26,88 @@ Public. Authenticates admin, returns JWT.
 { "error": "Invalid email or password" }
 ```
 
+Rate limited to 10 attempts per 15 minutes per IP; exceeding it returns `429` with a
+`Retry-After` header.
+
+### `POST /auth/change-password`
+
+Admin only (JWT required). Requires the current password, so an unexpired stolen token
+is not sufficient on its own to take over the account.
+
+**Request**
+
+```json
+{ "currentPassword": "••••••••", "newPassword": "••••••••" }
+```
+
+**Response `200`**
+
+```json
+{ "message": "Password updated" }
+```
+
+| Status | Case                                                     |
+| ------ | -------------------------------------------------------- |
+| 400    | New password fails policy, or matches the current one    |
+| 401    | Missing/invalid JWT, or `currentPassword` is wrong       |
+
+Succeeding also deletes any outstanding reset tokens for the account.
+
+### `POST /auth/forgot-password`
+
+Public. Emails a single-use reset link.
+
+**Request**
+
+```json
+{ "email": "admin@footballclub.demo" }
+```
+
+**Response `200`** — returned for *every* syntactically valid email, whether or not an
+account exists, so the endpoint cannot be used to discover valid admin addresses. This
+holds even when the mail send or token write fails internally.
+
+```json
+{ "message": "If that email matches an admin account, a reset link is on its way." }
+```
+
+Rate limited to 5 requests per hour per IP. The link points at
+`CLIENT_URL/admin/reset-password?token=…`, expires in **30 minutes**, and is single-use.
+Requesting a new link invalidates any previous one. Only a SHA-256 hash of the token is
+stored, so database access alone does not allow a password reset.
+
+> With no `SMTP_URL` configured the link is written to the server log instead of being
+> emailed, so the flow is exercisable locally. It is never returned in the HTTP response.
+
+### `POST /auth/reset-password`
+
+Public. Consumes a token from the emailed link.
+
+**Request**
+
+```json
+{ "token": "f532faf6…", "newPassword": "••••••••" }
+```
+
+**Response `200`**
+
+```json
+{ "message": "Password updated. You can now log in." }
+```
+
+**Response `400`** — token unknown, already used, or expired. The message is identical in
+all three cases so it can't be used to probe token state.
+
+```json
+{ "error": "This reset link is invalid or has expired" }
+```
+
+### Password policy
+
+Applies to `change-password` and `reset-password`: at least **10 characters**, containing
+at least one letter and one number, at most 200 characters. Violations return `400` with
+`field: "newPassword"`.
+
 ## Players
 
 ### `GET /players`

@@ -14,7 +14,7 @@
 | FR-04 | List upcoming fixtures with date, opponent, home/away, kick-off time                |
 | FR-05 | List recent results with score and W/D/L outcome                                    |
 | FR-06 | Site is fully responsive (mobile, tablet, desktop)                                  |
-| FR-07 | Public pages read from the live API — no hardcoded content in the final build      |
+| FR-07 | Public pages read from the live API — no hardcoded content in the final build       |
 
 ### 1.2 Admin panel
 
@@ -28,6 +28,9 @@
 | FR-13 | Admin can record a result against a fixture (score, outcome derived automatically)           |
 | FR-14 | Once a result is recorded, the fixture moves from "Upcoming" to "Results" on the public site |
 | FR-15 | Admin can log out                                                                            |
+| FR-19 | Password inputs offer a keyboard-reachable show/hide toggle                                  |
+| FR-20 | Logged-in admin can change their password by supplying the current one                       |
+| FR-21 | Admin can request a reset link by email and set a new password from it                       |
 
 ### 1.3 API
 
@@ -42,12 +45,13 @@
 | ID     | Requirement                                                                                                                                                    |
 | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | NFR-01 | Initial public page load under ~2s on a typical broadband connection                                                                                           |
-| NFR-02 | Passwords stored hashed (bcrypt), never in plaintext                                                                                                           |
+| NFR-02 | Passwords stored hashed (bcrypt), never in plaintext; reset tokens stored as SHA-256 digests, single-use, and time-limited                                     |
 | NFR-03 | Admin session via JWT with reasonable expiry; no session persisted insecurely in localStorage without awareness of XSS trade-offs (documented in Architecture) |
 | NFR-04 | Codebase organized so a new developer can find frontend/backend/DB layers within minutes                                                                       |
 | NFR-05 | Environment variables (DB creds, JWT secret) never committed to the repo                                                                                       |
 | NFR-06 | Accessible: visible keyboard focus states, sufficient color contrast, reduced-motion respected                                                                 |
 | NFR-07 | Deployable as two services (frontend static/SSR host + backend API host) or documented as such even if demoed together                                         |
+| NFR-08 | Authentication endpoints are rate limited, and password reset does not reveal whether an email address has an account                                          |
 
 ## 3. Data entities (high level — detailed in Architecture doc)
 
@@ -55,6 +59,7 @@
 - **Fixture**: opponent, date, time, home/away, status (upcoming/completed)
 - **Result**: linked to a fixture — score, outcome (W/D/L)
 - **Admin user**: email, hashed password, role
+- **Password reset token**: linked to an admin user — hashed token, expiry, used-at timestamp
 
 ## 4. Acceptance criteria (v1 done means)
 

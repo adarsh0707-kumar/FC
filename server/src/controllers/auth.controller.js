@@ -107,30 +107,32 @@ export const forgotPassword = asyncHandler(async (req, res) => {
   const admin = await prisma.adminUser.findUnique({ where: { email } });
   if (!admin) return res.json(genericResponse);
 
-  const rawToken = crypto.randomBytes(32).toString("hex");
-  const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60_000);
-
-  await prisma.$transaction([
-    // Only the newest link should be live at any time.
-    prisma.passwordResetToken.deleteMany({ where: { adminUserId: admin.id } }),
-    prisma.passwordResetToken.create({
-      data: { tokenHash: hashToken(rawToken), adminUserId: admin.id, expiresAt },
-    }),
-  ]);
-
-  const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
-  const resetUrl = `${clientUrl}/admin/reset-password?token=${rawToken}`;
-
+  // Everything from here on runs only for addresses that exist, so any error
+  // escaping this block would produce a different response for a real account
+  // than for an unknown one — which is exactly the enumeration leak the generic
+  // message is meant to prevent. Log loudly, respond identically.
   try {
+    const rawToken = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_TTL_MINUTES * 60_000);
+
+    await prisma.$transaction([
+      // Only the newest link should be live at any time.
+      prisma.passwordResetToken.deleteMany({ where: { adminUserId: admin.id } }),
+      prisma.passwordResetToken.create({
+        data: { tokenHash: hashToken(rawToken), adminUserId: admin.id, expiresAt },
+      }),
+    ]);
+
+    const clientUrl = (process.env.CLIENT_URL || "http://localhost:5173").replace(/\/$/, "");
+    const resetUrl = `${clientUrl}/admin/reset-password?token=${rawToken}`;
+
     await sendPasswordResetEmail({
       to: admin.email,
       resetUrl,
       expiresInMinutes: RESET_TOKEN_TTL_MINUTES,
     });
   } catch (err) {
-    // A mail outage shouldn't reveal that the address was valid, so the response
-    // stays identical — but this must be loud in the logs.
-    console.error("Failed to send password reset email:", err);
+    console.error("Password reset request failed for an existing account:", err);
   }
 
   res.json(genericResponse);

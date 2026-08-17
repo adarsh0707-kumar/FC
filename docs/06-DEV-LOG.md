@@ -213,6 +213,101 @@ Post-cleanup state, verified by request against the running API:
 
 ---
 
+### 2026-08-17 (cont'd) — Password management: show/hide, change, and reset
+
+Requested: a show/hide toggle on the login password field, plus change-password and
+forgot-password options. The toggle is a small UI change; the other two needed a schema
+change, three endpoints, and a mail path.
+
+**Schema:** added `PasswordResetToken` (migration
+`20260817153508_add_password_reset_tokens`) — `tokenHash` unique, `expiresAt`, `usedAt`,
+cascade-deleted with its `AdminUser`.
+
+**Endpoints** (all documented in `05-API-SPEC.md`):
+
+- `POST /auth/change-password` — authenticated, requires the current password.
+- `POST /auth/forgot-password` — public, emails a single-use link.
+- `POST /auth/reset-password` — public, consumes the token.
+
+**Security decisions:**
+
+- **Only the SHA-256 hash of a reset token is stored.** The raw token lives only in the
+  emailed URL, so read access to the database can't be turned into a password reset. Plain
+  SHA-256 rather than bcrypt is deliberate — the token is 256 bits of uniform randomness,
+  so a work factor buys nothing.
+- **No account enumeration.** `forgot-password` returns an identical 200 body for every
+  address. During testing this actually failed: the Prisma client hadn't been regenerated
+  after the migration, so a *real* address threw `Cannot read properties of undefined
+  (reading 'deleteMany')` while an unknown one returned the generic message — the
+  difference alone revealed which addresses had accounts. Fixed by regenerating, then
+  hardened by wrapping the whole post-lookup branch in try/catch so no future internal
+  error can reintroduce the leak.
+- **The reset link is never returned in the HTTP response**, only emailed or (without
+  SMTP configured) written to the server log. Returning it would let anyone who can reach
+  the endpoint take over the account.
+- Tokens expire in 30 minutes, are single-use, are superseded when a new link is
+  requested, and are all cleared when the password changes by any route.
+- **Rate limiting added** (`middleware/rateLimit.js`, no new dependency): 10 logins per
+  15 min and 5 reset requests per hour, per IP. This closes an item `03-ARCHITECTURE.md`
+  had listed as a v2 upgrade. In-process counters, so it needs Redis if the API is ever
+  scaled past one instance — noted in the architecture doc.
+- Password policy (`utils/passwordPolicy.js`): ≥10 chars, at least one letter and one
+  number. Length is weighted over character-class rules, which mostly produce predictable
+  substitutions.
+
+**Mail:** `utils/mailer.js` takes an `SMTP_URL` connection string, so any provider works
+without a code change (nodemailer added — the only new dependency). With no `SMTP_URL`,
+the link is logged instead, so the flow is exercisable locally with no email account.
+
+**Client:** new `PasswordField` component — a real `<button type="button">` so it's
+keyboard-reachable and can't submit the form, with visibility resetting on mount so a
+revealed password doesn't persist across navigation. Used in all four password inputs.
+New pages: `ForgotPassword`, `ResetPassword` (reads `?token=`, handles a missing token),
+`ChangePassword` (linked from the dashboard). Login now has a "Forgot your password?" link.
+
+**Bugs hit:**
+
+- **Migration couldn't reach the database.** `P1001` against Neon. Not an outage: DNS
+  returns AAAA records first, Node 17+ uses verbatim DNS ordering, and **this machine has
+  no working IPv6 egress** (`curl -6` to any host fails, IPv4 is fine). Prisma was dialling
+  a dead route. Confirmed by resolving the A record and connecting successfully.
+  `dns.setDefaultResultOrder("ipv4first")` now runs at server startup so this can't
+  intermittently break the API; the migration was run with `NODE_OPTIONS=--dns-result-order=ipv4first`.
+- **`prisma migrate dev` did not leave a usable client** — see the enumeration bug above.
+  `npx prisma generate` was needed explicitly.
+
+**Verified against the running API:**
+
+| Check                                            | Result                       |
+| ------------------------------------------------ | ---------------------------- |
+| `forgot-password`, unknown vs. real email        | Byte-identical 200 responses |
+| Reset token stored as 64-char SHA-256 hex        | Confirmed, raw never stored  |
+| Reset with a weak password                       | `400` + `field`              |
+| Reset with an unknown token                      | `400`                        |
+| Reset with a valid token                         | `200`, password changed      |
+| **Reusing a consumed token**                     | `400` — single-use holds     |
+| Login with the old password after reset          | `401`                        |
+| Login with the new password                      | `200`                        |
+| `change-password` without a JWT                  | `401`                        |
+| `change-password` with a wrong current password  | `401` + `field`              |
+| `change-password` reusing the same password      | `400` + `field`              |
+| `change-password` with a letters-only password   | `400` + `field`              |
+| Reset rate limit (5/hr)                          | `429` + `Retry-After`        |
+| Client lint + build                              | Clean                        |
+
+Test artifacts cleaned up afterwards: the admin password was cycled back to
+`changeme123` so the documented demo credential still works, and the leftover reset token
+was deleted.
+
+**Still open:** unchanged from the previous entry (deploy, API collection, upload
+persistence, `server/` linting, rotating the demo password), plus one new item now
+documented in `03-ARCHITECTURE.md` §7: **changing a password does not invalidate JWTs
+already issued** — a session opened beforehand stays valid until it expires (max 2h).
+Closing it needs a `passwordChangedAt` column and an `authGuard` check. Deferred, not
+overlooked.
+
+---
+
 <!--
 Template for future entries:
 

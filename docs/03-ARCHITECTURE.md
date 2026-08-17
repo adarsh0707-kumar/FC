@@ -94,9 +94,22 @@ model Result {
 }
 
 model AdminUser {
-  id           Int    @id @default(autoincrement())
-  email        String @unique
+  id           Int                  @id @default(autoincrement())
+  email        String               @unique
   passwordHash String
+  resetTokens  PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id          Int       @id @default(autoincrement())
+  tokenHash   String    @unique   // SHA-256 of the token; raw value only ever in the email
+  adminUserId Int
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([adminUserId])
 }
 ```
 
@@ -125,5 +138,45 @@ single-admin demo.
 
 - Swap local file uploads for S3/Cloudinary.
 - Add refresh tokens / rotate JWT secret.
-- Add rate limiting on `/api/auth/login`.
+- ~~Add rate limiting on `/api/auth/login`.~~ **Built** — see §8. Counters are in-process,
+  so this must move to a shared store (Redis) if the API is ever run on more than one
+  instance.
 - Add role-based permissions if multi-user admin is needed.
+- **Invalidate live JWTs on password change.** Changing or resetting a password does not
+  currently revoke tokens already issued, so a session opened beforehand stays usable
+  until it expires (max 2h). Closing this needs a `passwordChangedAt` column on
+  `AdminUser` plus a check in `authGuard` that rejects tokens issued before it. Deferred
+  rather than overlooked: it costs a migration, and with a 2h expiry and a single admin
+  the exposure window is small.
+
+## 8. Password management
+
+Three flows, all sharing one policy (≥10 characters, at least one letter and one number,
+≤200 characters) enforced in `utils/passwordPolicy.js`:
+
+- **Change password** (`POST /auth/change-password`, authenticated) — requires the current
+  password, so an unexpired stolen token is not enough on its own.
+- **Forgot password** (`POST /auth/forgot-password`, public) — emails a single-use link.
+- **Reset password** (`POST /auth/reset-password`, public) — consumes that link's token.
+
+Design decisions worth calling out:
+
+- **Tokens are stored hashed.** `PasswordResetToken.tokenHash` holds a SHA-256 digest; the
+  raw token exists only inside the emailed URL. Read access to the database therefore does
+  not let an attacker reset a password. (Unlike a user password, a 256-bit random token
+  has no guessable structure, so a plain hash is appropriate here — bcrypt's work factor
+  buys nothing against a uniformly random secret.)
+- **No account enumeration.** `forgot-password` returns the same 200 body for every valid
+  email address. The entire post-lookup branch is wrapped in try/catch specifically so
+  that an internal failure on a *real* address can't produce a different response than an
+  unknown one.
+- **Single-use, superseding, expiring.** Tokens expire after 30 minutes, are marked
+  `usedAt` on redemption, and requesting a new link deletes outstanding ones. Changing the
+  password by any route clears all reset tokens for the account.
+- **Mail is provider-agnostic.** `utils/mailer.js` takes an `SMTP_URL` connection string,
+  so SendGrid/Resend/Mailgun/SES all work without a code change. With no `SMTP_URL` set,
+  the link is written to the server log so the flow is exercisable in local development —
+  it is never returned in the HTTP response, which would let anyone reset the password.
+- **Rate limiting** (`middleware/rateLimit.js`): 10 login attempts per 15 min and 5 reset
+  requests per hour, per IP. Behind a proxy this needs `TRUST_PROXY` set, or every client
+  shares one bucket.

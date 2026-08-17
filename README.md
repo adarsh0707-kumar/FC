@@ -37,6 +37,11 @@ cp clients/.env.example clients/.env
 
 Edit `server/.env` and set `DATABASE_URL` to your Postgres connection string, and `JWT_SECRET` to any long random string.
 
+Password-reset emails need `SMTP_URL` (any provider's SMTP connection string) and
+`CLIENT_URL` (where reset links should point). **Leave `SMTP_URL` unset in local
+development** — the reset link is printed to the server log instead of being emailed, so
+the flow is fully testable without an email account.
+
 ### 4. Set up the database
 
 ```bash
@@ -74,7 +79,7 @@ See [`03-ARCHITECTURE.md`](docs/03-ARCHITECTURE.md) for the full breakdown of ea
 ## Deployment
 
 - **Frontend → Vercel:** set Root Directory to `clients/`, add `VITE_API_URL` pointing at your deployed backend.
-- **Backend → Render/Railway:** set Root Directory to `server/`, add `DATABASE_URL` and `JWT_SECRET` env vars, run `npx prisma migrate deploy` as part of the build.
+- **Backend → Render/Railway:** set Root Directory to `server/`, add `DATABASE_URL` and `JWT_SECRET` env vars, run `npx prisma migrate deploy` as part of the build. Also set `CLIENT_URL` (so reset links point at the deployed frontend), `TRUST_PROXY=1` (so rate limiting sees real client IPs rather than the proxy's), and `SMTP_URL` if password-reset emails should actually send.
 
 ## Built by
 
