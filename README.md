@@ -1,4 +1,4 @@
-# Football Club — Full-Stack Club Website
+# Football Club — Full-Stack Club Website.
 
 A full-stack football club website: public squad/fixtures/results pages backed by a real database, plus an admin panel for club staff to manage everything without touching code.
 
