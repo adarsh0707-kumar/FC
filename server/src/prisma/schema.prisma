@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Player {
+  id          Int      @id @default(autoincrement())
+  name        String
+  position    String
+  number      Int
+  photoUrl    String?
+  goals       Int      @default(0)
+  assists     Int      @default(0)
+  appearances Int      @default(0)
+  cleanSheets Int      @default(0)
+  bio         String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Fixture {
+  id       Int      @id @default(autoincrement())
+  opponent String
+  date     DateTime
+  homeAway String
+  status   String   @default("UPCOMING")
+  result   Result?
+}
+
+model Result {
+  id        Int     @id @default(autoincrement())
+  fixtureId Int     @unique
+  fixture   Fixture @relation(fields: [fixtureId], references: [id])
+  homeScore Int
+  awayScore Int
+  outcome   String
+}
+
+model AdminUser {
+  id           Int                  @id @default(autoincrement())
+  email        String               @unique
+  passwordHash String
+  resetTokens  PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id          Int       @id @default(autoincrement())
+  // Only the SHA-256 hash of the token is stored — the raw token exists solely
+  // in the emailed link, so a leaked database cannot be used to reset a password.
+  tokenHash   String    @unique
+  adminUserId Int
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([adminUserId])
+}

@@ -1,0 +1,16 @@
+:root {
+    --coal: #14110f;
+    --coal-2: #1b1712;
+    --brass: #c08a2e;
+    --brass-bright: #e0ac4b;
+    --pitch: #1f4d36;
+    --pitch-bright: #2e7350;
+    --chalk: #f2efe6;
+    --ash: #8a8377;
+    --ash-dim: #524c41;
+    --loss: #b4553f;
+
+    --font-display: "Oswald", sans-serif;
+    --font-body: "Inter", sans-serif;
+    --font-mono: "IBM Plex Mono", monospace;
+}
