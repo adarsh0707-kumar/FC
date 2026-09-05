@@ -10,9 +10,9 @@ async function main() {
   // Admin user
   const passwordHash = await bcrypt.hash("changeme123", 10);
   await prisma.adminUser.upsert({
-    where: { email: "admin@footballclub.demo" },
+    where: { email: "adarshku.official@gmail.com" },
     update: {},
-    create: { email: "admin@footballclub.demo", passwordHash },
+    create: { email: "adarshku.official@gmail.com", passwordHash },
   });
 
   // Players
