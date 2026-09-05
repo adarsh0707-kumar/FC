@@ -33,6 +33,8 @@ export const login = asyncHandler(async (req, res) => {
     {
       expiresIn: "2h",
     },
+
+    
   );
 
   res.json({ token, expiresIn: "2h" });
